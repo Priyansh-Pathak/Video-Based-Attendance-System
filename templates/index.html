@@ -1,0 +1,468 @@
+ <!-- <!DOCTYPE html>
+ <html lang="en">
+ <head>
+   <meta charset="UTF-8" />
+   <meta name="viewport" content="width=device-width, initial-scale=1" />
+   <title>Video Attendance System</title>
+   <style>
+     body {
+       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+       background: #f9fafb;
+       color: #222;
+       margin: 0;
+       padding: 40px 20px;
+       display: flex;
+       justify-content: center;
+       min-height: 100vh;
+     }
+     .container {
+       max-width: 450px;
+       width: 100%;
+       background: #fff;
+       border-radius: 8px;
+       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+       padding: 30px 25px;
+       box-sizing: border-box;
+     }
+     h2 {
+       margin-bottom: 24px;
+       font-weight: 700;
+       color: #0277bd;
+       text-align: center;
+     }
+     form {
+       margin-bottom: 30px;
+     }
+     input[type="file"] {
+       display: block;
+       width: 100%;
+       padding: 10px;
+       border: 2px solid #81d4fa;
+       border-radius: 6px;
+       font-size: 14px;
+       cursor: pointer;
+       box-sizing: border-box;
+     }
+     input[type="file"]:focus {
+       border-color: #0288d1;
+       outline: none;
+     }
+     button {
+       background-color: #0288d1;
+       border: none;
+       color: white;
+       font-size: 16px;
+       font-weight: 600;
+       padding: 12px;
+       width: 100%;
+       border-radius: 6px;
+       cursor: pointer;
+       transition: background-color 0.25s ease;
+     }
+     button:hover {
+       background-color: #0277bd;
+     }
+     video#video-preview {
+       width: 100%;
+       margin-top: 20px;
+       border-radius: 6px;
+       display: none;
+       border: 1px solid #ddd;
+     }
+     #status {
+       margin-top: 25px;
+       font-weight: 600;
+       font-size: 16px;
+       color: #555;
+       min-height: 24px;
+       text-align: center;
+     }
+     #identified-list {
+       margin-top: 25px;
+       padding: 15px 20px;
+       border: 1px solid #81d4fa;
+       border-radius: 6px;
+       background: #e1f5fe;
+       display: none;
+     }
+     #identified-list h3 {
+       margin-top: 0;
+       margin-bottom: 10px;
+       font-weight: 700;
+       color: #0288d1;
+       text-align: center;
+     }
+     #names-list {
+       list-style: none;
+       padding-left: 0;
+       margin: 0;
+       font-size: 15px;
+       line-height: 1.5;
+       color: #01579b;
+     }
+     #names-list li {
+       margin-bottom: 6px;
+       padding-left: 25px;
+       position: relative;
+     }
+     #names-list li.present::before {
+       content: "✔️";
+       position: absolute;
+       left: 0;
+       color: green;
+     }
+     #names-list li.absent::before {
+       content: "❌";
+       position: absolute;
+       left: 0;
+       color: red;
+     }
+   </style>
+ </head>
+ <body>
+   <div class="container">
+     <h2>Upload Classroom Video</h2>
+ 
+     <form id="upload-form" enctype="multipart/form-data">
+       <input type="file" id="video-input" name="video" accept="video/*" required />
+       <button type="submit">Upload & Process</button>
+     </form>
+ 
+     <video id="video-preview" controls></video>
+ 
+     <div id="status" aria-live="polite" role="status">Waiting for upload...</div>
+ 
+     <div id="identified-list" aria-live="polite" role="region" aria-label="Identified Students">
+       <h3>Identified Students</h3>
+       <ul id="names-list"></ul>
+     </div>
+   </div>
+ 
+   <script>
+     const form = document.getElementById("upload-form");
+     const videoInput = document.getElementById("video-input");
+     const videoPreview = document.getElementById("video-preview");
+     const statusDiv = document.getElementById("status");
+     const identifiedList = document.getElementById("identified-list");
+     const namesList = document.getElementById("names-list");
+ 
+     videoInput.addEventListener("change", () => {
+       const file = videoInput.files[0];
+       if (file) {
+         const url = URL.createObjectURL(file);
+         videoPreview.src = url;
+         videoPreview.style.display = "block";
+         statusDiv.textContent = "Ready to upload.";
+         identifiedList.style.display = "none";
+         namesList.innerHTML = "";
+       }
+     });
+ 
+     form.addEventListener("submit", async (e) => {
+       e.preventDefault();
+       const file = videoInput.files[0];
+       if (!file) return;
+ 
+       statusDiv.textContent = "Uploading and processing...";
+ 
+       identifiedList.style.display = "none";
+       namesList.innerHTML = "";
+ 
+       const formData = new FormData();
+       formData.append("video", file);
+ 
+       try {
+         const response = await fetch("/upload", {
+           method: "POST",
+           body: formData,
+         });
+ 
+         if (response.ok) {
+           const blob = await response.blob();
+           const url = window.URL.createObjectURL(blob);
+           const link = document.createElement("a");
+           link.href = url;
+           link.download = "attendance_report.xlsx";
+           document.body.appendChild(link);
+           link.click();
+           link.remove();
+ 
+           statusDiv.textContent = "Attendance report ready! File downloaded.";
+ 
+           const namesResp = await fetch("/identified-names");
+           if (namesResp.ok) {
+             const data = await namesResp.json();
+             const presentNames = data.present || [];
+             const absentNames = data.absent || [];
+ 
+             if (presentNames.length || absentNames.length) {
+               identifiedList.style.display = "block";
+               namesList.innerHTML = `
+                 ${presentNames.map(name => `<li class="present">${name}</li>`).join("")}
+                 ${absentNames.map(name => `<li class="absent">${name}</li>`).join("")}
+               `;
+             }
+           }
+         } else {
+           statusDiv.textContent = "Upload or processing failed.";
+         }
+       } catch (err) {
+         statusDiv.textContent = "Upload or processing failed.";
+         console.error(err);
+       }
+     });
+   </script>
+ </body>
+ </html>
+ 
+  -->
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Video Attendance System</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #f9fafb;
+        color: #222;
+        margin: 0;
+        padding: 40px 20px;
+        display: flex;
+        justify-content: center;
+        min-height: 100vh;
+      }
+      .container {
+        max-width: 450px;
+        width: 100%;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        padding: 30px 25px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      h2 {
+        margin-bottom: 24px;
+        font-weight: 700;
+        color: #0277bd;
+        text-align: center;
+        width: 100%;
+      }
+      form {
+        margin-bottom: 30px;
+        width: 100%;
+      }
+      input[type="file"] {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #81d4fa;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+      input[type="file"]:focus {
+        border-color: #0288d1;
+        outline: none;
+      }
+      button {
+        background-color: #0288d1;
+        border: none;
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        padding: 12px;
+        width: 100%;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background-color 0.25s ease;
+      }
+      button:hover {
+        background-color: #0277bd;
+      }
+      video#video-preview {
+    width: 120px;
+    height: 90px;
+    margin-top: 20px;
+    border-radius: 6px;
+    display: none;
+    border: 1px solid #ddd;
+    object-fit: cover;
+  }
+      #status {
+        margin-top: 25px;
+        font-weight: 600;
+        font-size: 16px;
+        color: #555;
+        min-height: 24px;
+        text-align: center;
+        width: 100%;
+      }
+      #identified-list {
+        margin-top: 25px;
+        padding: 15px 20px;
+        border: 1px solid #81d4fa;
+        border-radius: 6px;
+        background: #e1f5fe;
+        display: none;
+        width: 100%;
+      }
+      #identified-list h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        font-weight: 700;
+        color: #0288d1;
+        text-align: center;
+      }
+      #names-list {
+        list-style: none;
+        padding-left: 0;
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.5;
+        color: #01579b;
+      }
+      #names-list li {
+        margin-bottom: 6px;
+        padding-left: 25px;
+        position: relative;
+      }
+      #names-list li.present::before {
+        content: "✔️";
+        position: absolute;
+        left: 0;
+        color: green;
+      }
+      #names-list li.absent::before {
+        content: "❌";
+        position: absolute;
+        left: 0;
+        color: red;
+      }
+      /* Navigation links container */
+      .nav-links {
+        margin-top: 30px;
+        width: 100%;
+        text-align: center;
+      }
+      .nav-links a {
+        color: #0288d1;
+        font-weight: 600;
+        text-decoration: none;
+        margin: 0 15px;
+        font-size: 16px;
+        transition: color 0.3s ease;
+      }
+      .nav-links a:hover {
+        text-decoration: underline;
+        color: #01579b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Upload Classroom Video</h2>
+  
+      <form id="upload-form" enctype="multipart/form-data">
+        <input type="file" id="video-input" name="video" accept="video/*" required />
+        <button type="submit">Upload & Process</button>
+      </form>
+  
+      <video id="video-preview" controls></video>
+  
+      <div id="status" aria-live="polite" role="status">Waiting for upload...</div>
+  
+      <div id="identified-list" aria-live="polite" role="region" aria-label="Identified Students">
+        <h3>Identified Students</h3>
+        <ul id="names-list"></ul>
+      </div>
+  
+      <!-- Navigation Links -->
+      <div class="nav-links">
+        <a href="/students" title="Manage saved students">Manage Saved Students</a>
+        <a href="/label-unknowns" title="Label unknown faces">Label Unknown Faces</a>
+      </div>
+    </div>
+  
+    <script>
+      const form = document.getElementById("upload-form");
+      const videoInput = document.getElementById("video-input");
+      const videoPreview = document.getElementById("video-preview");
+      const statusDiv = document.getElementById("status");
+      const identifiedList = document.getElementById("identified-list");
+      const namesList = document.getElementById("names-list");
+  
+      videoInput.addEventListener("change", () => {
+        const file = videoInput.files[0];
+        if (file) {
+          const url = URL.createObjectURL(file);
+          videoPreview.src = url;
+          videoPreview.style.display = "block";
+          statusDiv.textContent = "Ready to upload.";
+          identifiedList.style.display = "none";
+          namesList.innerHTML = "";
+        }
+      });
+  
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const file = videoInput.files[0];
+        if (!file) return;
+  
+        statusDiv.textContent = "Uploading and processing...";
+  
+        identifiedList.style.display = "none";
+        namesList.innerHTML = "";
+  
+        const formData = new FormData();
+        formData.append("video", file);
+  
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+  
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "attendance_report.xlsx";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+  
+            statusDiv.textContent = "Attendance report ready! File downloaded.";
+  
+            const namesResp = await fetch("/identified-names");
+            if (namesResp.ok) {
+              const data = await namesResp.json();
+              const presentNames = data.present || [];
+              const absentNames = data.absent || [];
+  
+              if (presentNames.length || absentNames.length) {
+                identifiedList.style.display = "block";
+                namesList.innerHTML = `
+                  ${presentNames.map(name => `<li class="present">${name}</li>`).join("")}
+                  ${absentNames.map(name => `<li class="absent">${name}</li>`).join("")}
+                `;
+              }
+            }
+          } else {
+            statusDiv.textContent = "Upload or processing failed.";
+          }
+        } catch (err) {
+          statusDiv.textContent = "Upload or processing failed.";
+          console.error(err);
+        }
+      });
+    </script>
+  </body>
+  </html>
+  
